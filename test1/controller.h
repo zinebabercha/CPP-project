@@ -12,6 +12,8 @@
 #include <ostream>
 #include <vector>
 #include <algorithm>
+#include <sys/stat.h>
+
 #include "functions.h"
 
 using namespace std;
@@ -20,6 +22,7 @@ namespace fs = std::filesystem;
 class Controller
 {
 private:
+    string archiveDirectory;
     string workingDirectory;
     string repoName;
     int LastVer;
@@ -30,49 +33,26 @@ private:
     vector<string> commitLog;
 
 public:
-    static string archiveDirectory;
-
-    static std::string getGreatestFolderName(const std::string &directoryPath)
+    Controller()
     {
-        std::string greatestFolderName;
-        std::filesystem::path directory(directoryPath);
-
-        if (std::filesystem::is_directory(directory))
-        {
-            for (const auto &entry : std::filesystem::directory_iterator(directory))
-            {
-                if (std::filesystem::is_directory(entry))
-                {
-                    std::string folderName = entry.path().filename().string();
-                    if (std::stoi(folderName) > std::stoi(greatestFolderName))
-                    {
-                        greatestFolderName = folderName;
-                    }
-                }
-            }
-        }
-
-        return greatestFolderName;
+        this->archiveDirectory = "D:\\OneDrive\\Bureau\\Archive";
     }
 
-    static fs::path getLastRepoVersionPath(string repoName, string username)
+
+    string getLastRepoVersionPath()
     {
-        fs::path archive_dir(archiveDirectory);
-        string lastVersion = getGreatestFolderName(archiveDirectory + "/" + username + "/" + repoName);
-        if (lastVersion == "")
+        int lastVersion = getGreatestFolderVersion(archiveDirectory + "\\" + username + "\\" + repoName);
+        if (lastVersion == -1)
             throw("No version found");
-        fs::path lastVersionPath = archive_dir / username / repoName / lastVersion;
+        string lastVersionPath = archiveDirectory + "\\" + username + "\\" + repoName + "\\" + to_string(lastVersion);
         return lastVersionPath;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////::
 
-    Controller(){}; // Default constructor
-
     bool repoExists(string repoName)
     {
-        fs::path repo_dir(archiveDirectory + "/" + username + "/" + repoName);
-        return fs::exists(repo_dir);
+        return fs::exists(archiveDirectory + "\\" + username + "\\" + repoName);
     }
 
     void start(bool newAccount, string username, string password, string workingDirectory, bool isNewRepo)
@@ -86,10 +66,9 @@ public:
 
         // search for repo / create new repo
         this->workingDirectory = workingDirectory;
-        fs::path repo_dir(workingDirectory);
-        repoName = repo_dir.parent_path().filename().string();
+        repoName = getLastFolderName(workingDirectory + "\\");
 
-        if (!fs::exists(archiveDirectory + "/" + username + "/" + repoName))
+        if (!fs::exists(archiveDirectory + "\\" + username + "\\" + repoName))
         {
             if (isNewRepo)
             {
@@ -108,13 +87,13 @@ public:
 
     bool login(string username, string password)
     {
-        fs::path user_dir(archiveDirectory + "/" + username);
+        string user_dir = archiveDirectory + "\\" + username;
         if (!fs::exists(user_dir))
         {
             throw("User does not exist");
             return false;
         }
-        fs::path password_path(user_dir / "password.txt");
+        string password_path = user_dir + "\\" + "password.txt";
         if (fs::exists(password_path))
         {
             ifstream password_file(password_path);
@@ -141,18 +120,20 @@ public:
             throw("User does not exist");
             return false;
         }
+        return false;
     }
 
     bool registerUser(string username, string password)
     {
-        fs::path user_dir(archiveDirectory + "/" + username);
+
+        string user_dir = archiveDirectory + "\\" + username;
         if (fs::exists(user_dir))
         {
             throw("User already exists");
             return false;
         }
-        fs::create_directories(user_dir);
-        fs::path password_path(user_dir / "password.txt");
+        mkdir(user_dir.c_str());
+        string password_path = user_dir + "\\" + "password.txt";
         ofstream password_file(password_path);
         if (password_file.is_open())
         {
@@ -167,24 +148,48 @@ public:
         }
     }
 
+    vector<string> listUserRepos()
+    {
+        string user_dir = archiveDirectory + "\\" + username;
+        vector<string> repos;
+        if (fs::exists(user_dir))
+        {
+            for (const auto &entry : fs::directory_iterator(user_dir))
+            {
+                if (fs::is_directory(entry))
+                {
+                    repos.push_back(entry.path().filename().string());
+                }
+            }
+        }
+        else
+        {
+            throw("User does not exist");
+        }
+        return repos;
+    }
+
     bool useRepo(string repoPath, bool isNewRepo)
     {
+        workingDirectory = repoPath;
+        cout << "Using repo: " << workingDirectory << endl;
+        repoName = getLastFolderName(workingDirectory + "\\");
         if (isNewRepo)
         {
+            initRepository();
             LastVer = -1;
             LastVerPath = "";
         }
         else
         {
-            LastVer = stoi(getGreatestFolderName(archiveDirectory + "/" + username + "/" + repoPath));
-            LastVerPath = getLastRepoVersionPath(repoPath, username).string();
+            LastVer = getGreatestFolderVersion(archiveDirectory + "\\" + username + "\\" + repoName);
+            if (LastVer == -1)
+                throw("No version found");
+            LastVerPath = getLastRepoVersionPath();
         }
-        fs::path archiveDirRepo(LastVerPath);
-        if (fs::exists(archiveDirRepo))
+        if (!isNewRepo && fs::exists(LastVerPath))
         {
-            workingDirectory = repoPath;
-            fs::path repo_dir(workingDirectory);
-            fs::path file_hashes_path = archiveDirRepo / ".vcs" / "file_hashes.txt";
+            string file_hashes_path = LastVerPath + "\\" + ".vcs" + "\\" + "file_hashes.txt";
             if (fs::exists(file_hashes_path))
             {
                 ifstream file_hashes_file(file_hashes_path);
@@ -213,35 +218,39 @@ public:
 
     void initRepository()
     {
-        fs::path repo_dir(workingDirectory);
-        fs::path archive_dir(archiveDirectory);
-
-        if (fs::exists(archive_dir / username / repo_dir.parent_path().filename()))
+        if (fs::exists(archiveDirectory + "\\" + username + "\\" + repoName))
         {
-            throw("Repository already exists");
+            cout << "not here" << endl;
+            cout << archiveDirectory + "\\" + username + "\\" + repoName << endl;
+            throw(std::runtime_error("Repository already exists"));
             return;
         }
-
-        fs::create_directories(repo_dir / ".vcs");
-        fs::create_directories(archive_dir / username / repo_dir.parent_path().filename());
+        cout << "here" << endl;
+        mkdir((workingDirectory + "\\.vcs").c_str());
+        mkdir((archiveDirectory + "\\" + username + "\\" + repoName).c_str());
         cout << "Repository initialized at " << workingDirectory << endl;
     }
 
     void addFile(const string &fileName)
     {
-        fs::path file_path(workingDirectory + "/" + fileName);
-        fs::path repo_dir(workingDirectory);
-        fs::path archive_dir(archiveDirectory);
-
-        if (!fs::exists(file_path))
+        try
         {
-            throw("File does not exist");
-            return;
-        }
+            string file_path = workingDirectory + "\\" + fileName;
+            cout << file_path << endl;
+            if (!fs::exists(file_path))
+            {
+                throw std::runtime_error("File does not exist");
+                return;
+            }
 
-        fileHashes[fileName] = to_string(hashFileContents(workingDirectory + "/" + fileName));
-        log("File added for tracking: " + fileName);
-        cout << "File added to archive" << endl;
+            fileHashes[fileName] = to_string(hashFileContents(workingDirectory + "\\" + fileName));
+            log("File added for tracking: " + fileName);
+            cout << "File added to archive" << endl;
+        }
+        catch (const std::exception &e)
+        {
+            std::cerr << e.what() << '\n';
+        }
     }
 
     void commitChanges(const string &message)
@@ -254,10 +263,9 @@ public:
         }
 
         // Put the map of filehashes in the filehashes file in .vcs
-        fs::path repo_dir(workingDirectory);
 
-        fs::path file_hashes_path = repo_dir / ".vcs" / "file_hashes.txt";
-        ofstream file_hashes_file(file_hashes_path);
+        string file_hashes_path = workingDirectory + "\\.vcs\\file_hashes.txt";
+        ofstream file_hashes_file(file_hashes_path, ios::out);
         if (file_hashes_file.is_open())
         {
             file_hashes_file << fileHashes;
@@ -288,7 +296,7 @@ public:
         }
 
         // Add commit log to commit log file
-        fs::path commit_log_path = repo_dir / ".vcs" / "commit_log.txt";
+        string commit_log_path = workingDirectory + "\\" + ".vcs" + "\\" + "commit_log.txt";
         ofstream commit_log_file(commit_log_path, ios::app);
         if (commit_log_file.is_open())
         {
@@ -306,22 +314,22 @@ public:
         commitLog.clear();
 
         // Copy whole repo to archive
-        fs::path archive_dir(archiveDirectory);
         string newVersion = to_string(LastVer + 1);
-        fs::path newVersionPath = archive_dir / username / repo_dir.parent_path().filename() / newVersion;
-        fs::create_directories(newVersionPath);
-        fs::copy(repo_dir, newVersionPath, fs::copy_options::recursive);
+        cout << repoName << endl;
+        cout << username << endl;
+        string newVersionPath = archiveDirectory + "\\" + username + "\\" + repoName + "\\" + newVersion;
+        copy_directory(workingDirectory, newVersionPath);
 
         // Update LastVer and LastVerPath
         LastVer = stoi(newVersion);
-        LastVerPath = newVersionPath.string();
+        LastVerPath = newVersionPath;
     }
 
     ////////////////////////////////////////////////////////////////////
     void log(const string &message)
     {
         ofstream logFile;
-        logFile.open(workingDirectory + "/.vcs/log.txt", ios::app);
+        logFile.open(workingDirectory + "\\.vcs\\log.txt", ios::app);
         if (!logFile)
         {
             throw("Log file is not open. Message: " + message);
@@ -339,4 +347,3 @@ public:
         return buffer;
     }
 };
-
