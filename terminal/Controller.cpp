@@ -1,9 +1,3 @@
-#ifndef CONTROLLER_H
-#define CONTROLLER_H
-
-#endif // CONTROLLER_H
-
-
 #include <string>
 #include <filesystem>
 #include <iostream>
@@ -14,7 +8,7 @@
 #include <algorithm>
 #include <sys/stat.h>
 
-#include "functions.h"
+#include "functions.cpp"
 
 using namespace std;
 namespace fs = std::filesystem;
@@ -347,3 +341,110 @@ public:
         return buffer;
     }
 };
+
+int main()
+{
+    Controller controller;
+    string username, password;
+    cout << "Register or login? (r/l): ";
+    char choice;
+    cin >> choice;
+    switch (choice)
+    {
+    case 'r':
+        cout << "Enter username: ";
+        cin >> username;
+        cout << "Enter password: ";
+        cin >> password;
+        controller.registerUser(username, password);
+        controller.login(username, password);
+        break;
+    case 'l':
+        cout << "Enter username: ";
+        cin >> username;
+        cout << "Enter password: ";
+        cin >> password;
+        controller.login(username, password);
+        break;
+    default:
+        cout << "Invalid choice" << endl;
+        break;
+    }
+
+    cout << "User repos: " << endl;
+    vector<string> repos = controller.listUserRepos();
+    for (const auto &repo : repos)
+    {
+        cout << repo << endl;
+    }
+    cout << "init new repo or use existing? (n/e): ";
+    cin >> choice;
+    bool newRepo;
+    string repoPath;
+    switch (choice)
+    {
+    case 'n':
+        newRepo = true;
+        break;
+    case 'e':
+        newRepo = false;
+        break;
+    default:
+        cout << "Invalid choice" << endl;
+        break;
+    }
+    cout << "Enter repo path: ";
+    cin.ignore();
+    getline(cin, repoPath);
+
+    cout << repoPath << endl;
+    // replace(repoPath.begin(), repoPath.end(), '\\', '\\\\'); // Replace single backslash with double backslash
+    controller.useRepo(repoPath, newRepo);
+    while (true)
+    {
+        cout << "Enter command: ";
+        string command;
+        cin >> command;
+        if (command == "add")
+        {
+            cout << "Enter file name: ";
+            string fileName;
+            cin >> fileName;
+            controller.addFile(fileName);
+        }
+        else if (command == "commit")
+        {
+            cout << "Enter commit message: ";
+            string message;
+            cin.ignore();          // Ignore any previous newline character
+            getline(cin, message); // Read the whole line, including spaces
+            controller.commitChanges(message);
+        }
+        else if (command == "log")
+        {
+            cout << "Log: " << endl;
+            ifstream logFile;
+            logFile.open(repoPath + "\\.vcs\\log.txt");
+            if (!logFile)
+            {
+                cout << "Log file is not open" << endl;
+                return 1;
+            }
+            string line;
+            while (getline(logFile, line))
+            {
+                cout << line << endl;
+            }
+            logFile.close();
+        }
+        else if (command == "exit")
+        {
+            break;
+        }
+        else
+        {
+            cout << command << endl;
+            cout << "Invalid command" << endl;
+        }
+    }
+}
