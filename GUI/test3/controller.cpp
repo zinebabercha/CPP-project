@@ -10,27 +10,31 @@
 #include <vector>
 #include <QObject>
 #include <functions.h>
+#include <QMutex>
+#include <QWaitCondition>
+#include <QVector>
+
 
 Controller::Controller(){
-    this->archiveDirectory = "D:/OneDrive/Bureau/Archive";
+    this->archiveDirectory = "D:\\OneDrive\\Bureau\\Archive";
 }
 
 QString Controller::getLastRepoVersionPath() {
-    int lastVersion = getGreatestFolderVersion((archiveDirectory + "/" + username + "/" + repoName).toStdString());
+    int lastVersion = getGreatestFolderVersion((archiveDirectory + "\\" + username + "\\" + repoName).toStdString());
     if (lastVersion == -1) {
         throw std::runtime_error("No version found");
     }
-    QString lastVersionPath = archiveDirectory + "/" + username + "/" + repoName + "/" + QString::number(lastVersion);
+    QString lastVersionPath = archiveDirectory + "\\" + username + "\\" + repoName + "\\" + QString::number(lastVersion);
     return lastVersionPath;
 }
 
 bool Controller::repoExists(const QString& repoName) {
-    QDir dir(archiveDirectory + "/" + username + "/" + repoName);
+    QDir dir(archiveDirectory + "\\" + username + "\\" + repoName);
     return dir.exists();
 }
 
 bool Controller::login(const QString &username, const QString &password) {
-    QDir userDir(archiveDirectory + "/" + username);
+    QDir userDir(archiveDirectory + "\\" + username);
     if (!userDir.exists()) {
         throw std::runtime_error("User does not exist");
     }
@@ -54,7 +58,7 @@ bool Controller::login(const QString &username, const QString &password) {
 }
 
 bool Controller::registerUser(const QString& username, const QString& password) {
-    QDir userDir(archiveDirectory + "/" + username);
+    QDir userDir(archiveDirectory + "\\" + username);
     if (userDir.exists()) {
         throw std::runtime_error("User already exists");
         return false;
@@ -78,7 +82,7 @@ bool Controller::registerUser(const QString& username, const QString& password) 
 }
 
 std::vector<QString> Controller::listUserRepos() {
-    QDir userDir(archiveDirectory + "/" + username);
+    QDir userDir(archiveDirectory + "\\" + username);
     if (!userDir.exists()) {
         throw std::runtime_error("User does not exist");
     }
@@ -93,28 +97,39 @@ std::vector<QString> Controller::listUserRepos() {
     return repos;
 }
 
-bool Controller::useRepo(const QString& repoPath, bool isNewRepo) {
+bool Controller::useRepo(const QString& repoPath, bool isNewRepo, bool cloneRepo) {
+    isNewRepo = isNewRepo;
     cout << isNewRepo << endl;
     workingDirectory = repoPath;
     qDebug() << "Using repo: " << workingDirectory;
-    repoName = QString::fromStdString(getLastFolderName(workingDirectory.toStdString()+"/"));
+    repoName = QString::fromStdString(getLastFolderName(workingDirectory.toStdString()+"\\"));
     cout << repoName.toStdString() << endl;
 
-    if (isNewRepo) {
+    if(cloneRepo){
+        clone();
+    }
+    else if (isNewRepo) {
         initRepository();
-        lastVer = -1;
-        lastVerPath.clear();
+        // Copy whole repo to archive
+        int newVersion = 0;
+        QString newVersionPath = archiveDirectory + "\\" + username + "\\" + repoName + "\\" + QString::number(newVersion);
+        QDir().mkpath(newVersionPath);
+        copy_directory(workingDirectory.toStdString(), newVersionPath.toStdString());
+
+        // Update lastVer and lastVerPath
+        lastVer = newVersion;
+        lastVerPath = newVersionPath;
     } else {
-        lastVer = getGreatestFolderVersion((archiveDirectory + "/" + username + "/" + repoName).toStdString());
+        lastVer = getGreatestFolderVersion((archiveDirectory + "\\" + username + "\\" + repoName).toStdString());
         if (lastVer == -1) {
             throw std::runtime_error("No version found");
         }
         lastVerPath = getLastRepoVersionPath();
     }
 
-    if (!isNewRepo) {
-        QDir versionDir(lastVerPath);
-        QFile fileHashesFile(versionDir.filePath(".vcs/file_hashes.txt"));
+    if (!isNewRepo && !cloneRepo) {
+        QDir versionDir(workingDirectory);
+        QFile fileHashesFile(versionDir.filePath(".vcs\\file_hashes.txt"));
         if (fileHashesFile.exists()) {
             if (fileHashesFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 QTextStream in(&fileHashesFile);
@@ -139,7 +154,7 @@ bool Controller::useRepo(const QString& repoPath, bool isNewRepo) {
 }
 
 void Controller::initRepository() {
-    QDir userRepoDir(archiveDirectory + "/" + username + "/" + repoName);
+    QDir userRepoDir(archiveDirectory + "\\" + username + "\\" + repoName);
     if (userRepoDir.exists()) {
         qDebug() << "Repository already exists";
         throw std::runtime_error("Repository already exists");
@@ -153,11 +168,22 @@ void Controller::initRepository() {
         throw std::runtime_error("Cannot create user repository directory");
     }
     qDebug() << "Repository initialized at " << workingDirectory;
+
+    QFile file(archiveDirectory + "\\" + username + "\\" + repoName + "\\0\\.vcs\\file_hashes.txt");
+
+    // Open the file in write-only mode
+    if (file.open(QIODevice::WriteOnly)) {
+        // Close the file
+        file.close();
+        qDebug() << "Empty file created successfully.";
+    } else {
+        qDebug() << "Failed to create the file:" << file.errorString();
+    }
 }
 
 bool Controller::addFile(const QString& fileName) {
     try {
-        QString filePath = workingDirectory + "/" + fileName;
+        QString filePath = workingDirectory + "\\" + fileName;
         qDebug() << filePath;
         QFile file(filePath);
         if (!file.exists()) {
@@ -175,7 +201,7 @@ bool Controller::addFile(const QString& fileName) {
         fileHashes[fileName] = filehash;
 
         // Write file hashes to .vcs/file_hashes.txt
-        QFile fileHashesFile(workingDirectory + "/.vcs/file_hashes.txt");
+        QFile fileHashesFile(workingDirectory + "\\.vcs\\file_hashes.txt");
         if (fileHashesFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
             QTextStream out(&fileHashesFile);
             out << fileName << ":" << filehash << "\n";
@@ -192,11 +218,66 @@ bool Controller::addFile(const QString& fileName) {
     return true;
 }
 
-void Controller::commitChanges(const QString& message) {
-    if (fileHashes.isEmpty()) {
-        qDebug() << "No changes to commit.";
-        return;
+
+bool Controller::addFileParallel(const QString& fileName) {
+    try {
+        QString filePath = workingDirectory + "\\" + fileName;
+        qDebug() << filePath;
+        QFile file(filePath);
+
+        if (!file.exists()) {
+            throw std::runtime_error("File does not exist");
+        }
+
+        QString filehash = QString::number(hashFileContents(filePath.toStdString()));
+
+        {
+            QMutexLocker locker(&fileAddMutex);
+
+            // Wait for the mutex to be unlocked
+            while (!fileAddMutex.tryLock()) {
+                fileAddCondition.wait(&fileAddMutex);
+            }
+
+            // Inside the critical section
+            if (fileHashes.contains(fileName)) {
+                if (fileHashes[fileName] == filehash) {
+                    qDebug() << "File not changed!";
+                    return false;
+                }
+            }
+
+            fileHashes[fileName] = filehash;
+
+            // Write file hashes to .vcs/file_hashes.txt
+            QFile fileHashesFile(workingDirectory + "\\.vcs\\file_hashes.txt");
+            if (fileHashesFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                QTextStream out(&fileHashesFile);
+                out << fileName << ":" << filehash << "\n";
+                fileHashesFile.close();
+            } else {
+                qDebug() << "Cannot open file:" << fileHashesFile.fileName();
+            }
+
+            // Notify waiting threads
+            fileAddCondition.wakeAll();
+        }  // Mutex is automatically released when QMutexLocker goes out of scope
+
+        log("File added for tracking: " + fileName);
+        qDebug() << "File added to archive";
+    } catch (const std::exception& e) {
+        qDebug() << e.what();
     }
+    return true;
+}
+
+bool Controller::canCommit(){
+    return (!fileHashes.isEmpty());
+}
+
+
+void Controller::commitChanges(const QString& message) {
+
 
     qDebug() << "Committing changes: " << message;
     for (const auto& [file, hash] : fileHashes.toStdMap()) {
@@ -220,7 +301,7 @@ void Controller::commitChanges(const QString& message) {
     }
 
     // Write commit log to .vcs/commit_log.txt
-    QFile commitLogFile(workingDirectory + "/.vcs/commit_log.txt");
+    QFile commitLogFile(workingDirectory + "\\.vcs\\commit_log.txt");
     if (commitLogFile.open(QIODevice::Append | QIODevice::Text)) {
         QTextStream out(&commitLogFile);
         out << message << "\n";
@@ -235,7 +316,7 @@ void Controller::commitChanges(const QString& message) {
 
     // Copy whole repo to archive
     int newVersion = lastVer + 1;
-    QString newVersionPath = archiveDirectory + "/" + username + "/" + repoName + "/" + QString::number(newVersion);
+    QString newVersionPath = archiveDirectory + "\\" + username + "\\" + repoName + "\\" + QString::number(newVersion);
     QDir().mkpath(newVersionPath);
     copy_directory(workingDirectory.toStdString(), newVersionPath.toStdString());
 
@@ -244,9 +325,10 @@ void Controller::commitChanges(const QString& message) {
     lastVerPath = newVersionPath;
 
     //empty the file containing the hashes
-    QFile fileHashesFile(workingDirectory + "/.vcs/file_hashes.txt");
+    QFile fileHashesFile(workingDirectory + "\\.vcs\\file_hashes.txt");
     if (fileHashesFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
         // File opened successfully, fileHashes are cleared
+        fileHashesFile.resize(0);
         fileHashesFile.close();
     } else {
         qDebug() << "Could not clear file hashes in the working directory.";
@@ -256,7 +338,7 @@ void Controller::commitChanges(const QString& message) {
 }
 
 void Controller::log(const QString& message) {
-    QFile logFile(workingDirectory + "/.vcs/log.txt");
+    QFile logFile(workingDirectory + "\\.vcs\\log.txt");
     if (!logFile.open(QIODevice::Append | QIODevice::Text)) {
         throw std::runtime_error("Log file is not open. Message: " + message.toStdString());
         return;
@@ -272,4 +354,66 @@ QString Controller::getCurrentTime() {
     return now.toString("yyyy-MM-dd HH:mm:ss");
 }
 
+
+void Controller::pull(){
+    synchronizeDirectories(lastVerPath, workingDirectory);
+    //empty file_hashes file because there is no modification
+    QFile fileHashesFile(workingDirectory + "\\.vcs\\file_hashes.txt");
+    if (fileHashesFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        // File opened successfully, fileHashes are cleared
+        fileHashesFile.resize(0);
+        fileHashesFile.close();
+    } else {
+        qDebug() << "Could not clear file hashes in the working directory.";
+    }
+    fileHashes.clear();
+}
+
+void Controller::clone(){
+    lastVerPath = getLastRepoVersionPath();
+    copy_directory(lastVerPath.toStdString(), workingDirectory.toStdString());
+    lastVer = getGreatestFolderVersion((archiveDirectory + "\\" + username + "\\" + repoName).toStdString());
+    qDebug() << "tcopya\n";
+    //empty file_hashes file because there is no modification
+    QFile fileHashesFile(workingDirectory + "\\.vcs\\file_hashes.txt");
+    if (fileHashesFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        // File opened successfully, fileHashes are cleared
+        fileHashesFile.resize(0);
+        fileHashesFile.close();
+    } else {
+        qDebug() << "Could not clear file hashes in the working directory.";
+    }
+    fileHashes.clear();
+    qDebug() << "temptya";
+}
+
+QVector<QString> Controller::getLogLines() {
+    QVector<QString> logLines;
+    QFile logFile(workingDirectory + "\\.vcs\\log.txt");
+
+    if (logFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&logFile);
+        while (!in.atEnd()) {
+            QString line = in.readLine();
+            logLines.push_back(line);
+        }
+
+        logFile.close();
+    }
+
+    return logLines;
+}
+
+void Controller::emptyInfo(){
+    repoName = "";
+    workingDirectory = "";
+    lastVer = -1;
+    lastVerPath = "";
+}
+
+
+void Controller::logout(){
+    emptyInfo();
+    username = "";
+}
 

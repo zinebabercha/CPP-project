@@ -22,9 +22,9 @@ public:
 private slots:
     void showLoginPage();
     void showRegisterPage();
-    void showUserReposPage(std::vector<QString>);
+    void showUserReposPage();
     void showRepoActionsPage();
-
+    void showLogWindow();
 
 private:
     Ui::MainWindow *ui;
@@ -33,14 +33,12 @@ private:
     void handleLogin();
     void handleRegister();
     void handleLogout();
-    void handleBrowseRepos();
-    void handleInitializeRepo();
-    void handleBackToRepos();
-    void handleCheckRepository();
+    void handleUseRepo();
     void handleAddFiles();
     void handleCommitChanges();
-    void handleAddSelectedFiles();
-
+    // void handleAddFilesParallel();
+    void handlePull();
+    void handleChangeRepo();
 
 
 };

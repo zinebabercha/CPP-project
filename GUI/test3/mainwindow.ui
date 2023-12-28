@@ -249,6 +249,19 @@
          <string>Logout</string>
         </property>
        </widget>
+       <widget class="QRadioButton" name="radioButton_3">
+        <property name="geometry">
+         <rect>
+          <x>30</x>
+          <y>200</y>
+          <width>89</width>
+          <height>20</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Clone</string>
+        </property>
+       </widget>
       </widget>
       <widget class="QWidget" name="page_4">
        <widget class="QLabel" name="label_11">
@@ -281,7 +294,7 @@
         <property name="geometry">
          <rect>
           <x>330</x>
-          <y>90</y>
+          <y>80</y>
           <width>75</width>
           <height>24</height>
          </rect>
@@ -294,7 +307,7 @@
         <property name="geometry">
          <rect>
           <x>330</x>
-          <y>140</y>
+          <y>120</y>
           <width>75</width>
           <height>24</height>
          </rect>
@@ -307,7 +320,7 @@
         <property name="geometry">
          <rect>
           <x>330</x>
-          <y>190</y>
+          <y>160</y>
           <width>75</width>
           <height>24</height>
          </rect>
@@ -350,6 +363,19 @@
         </property>
         <property name="text">
          <string>Change repository</string>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="pushButton_11">
+        <property name="geometry">
+         <rect>
+          <x>330</x>
+          <y>200</y>
+          <width>75</width>
+          <height>24</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>log</string>
         </property>
        </widget>
       </widget>

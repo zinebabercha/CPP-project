@@ -6,31 +6,13 @@
 #include <vector>
 #include <dirent.h>
 #include <sys/stat.h>
-#include<QString>
-#include<sstream>
+#include <QString>
+#include <sstream>
+#include <QDir>
+#include <functional>
+#include <QMessageBox>
 
 using namespace std;
-
-// Overload '<<' operator for unordered_map<string, string>
-std::ostream &operator<<(std::ostream &os, const std::unordered_map<std::string, std::string> &map)
-{
-    for (const auto &pair : map)
-    {
-        os << pair.first << ": " << pair.second << std::endl;
-    }
-    return os;
-}
-
-// Overload '>>' operator for unordered_map<string, string>
-std::istream &operator>>(std::istream &is, std::unordered_map<std::string, std::string> &map)
-{
-    std::string key, value;
-    while (is >> key >> value)
-    {
-        map[key] = value;
-    }
-    return is;
-}
 
 size_t hashFileContents(const string &filePath)
 {
@@ -69,10 +51,10 @@ size_t hashFileContents(const string &filePath)
 
 std::string getLastFolderName(const std::string &path)
 {
-    size_t lastSlashPos = path.find_last_of('/');
+    size_t lastSlashPos = path.find_last_of('\\');
     if (lastSlashPos != std::string::npos)
     {
-        size_t secondLastSlashPos = path.find_last_of('/', lastSlashPos - 1);
+        size_t secondLastSlashPos = path.find_last_of('\\', lastSlashPos - 1);
         if (secondLastSlashPos != std::string::npos)
         {
             return path.substr(secondLastSlashPos + 1, lastSlashPos - secondLastSlashPos - 1);
@@ -97,8 +79,8 @@ void copy_directory(const std::string &source, const std::string &destination)
     {
         if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
         {
-            std::string source_path = source + "/" + entry->d_name;
-            std::string destination_path = destination + "/" + entry->d_name;
+            std::string source_path = source + "\\" + entry->d_name;
+            std::string destination_path = destination + "\\" + entry->d_name;
 
             struct stat info;
             if (stat(source_path.c_str(), &info) != 0)
@@ -211,8 +193,8 @@ void synchronizeDirectories(const QString& sourceDir, const QString& destDir) {
     auto destFiles = listFilesInDirectory(destDir);
 
     for (const auto& fileName : sourceFiles) {
-        QString sourceFilePath = sourceDir + "/" + fileName;
-        QString destFilePath = destDir + "/" + fileName;
+        QString sourceFilePath = sourceDir + "\\" + fileName;
+        QString destFilePath = destDir + "\\" + fileName;
 
         if (std::find(destFiles.begin(), destFiles.end(), fileName) != destFiles.end()) {
             if (!areFilesSame(sourceFilePath, destFilePath)) {
@@ -223,5 +205,35 @@ void synchronizeDirectories(const QString& sourceDir, const QString& destDir) {
             qDebug() << "Copying new file:" << fileName;
             copyFile(sourceFilePath, destFilePath);
         }
+    }
+
+    QDir sourceDirObj(sourceDir);
+    QStringList sourceSubdirs = sourceDirObj.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+
+    for (const auto& subdir : sourceSubdirs) {
+        QString sourceSubdirPath = sourceDir + "\\" + subdir;
+        QString destSubdirPath = destDir + "\\" + subdir;
+
+        if (!QDir(destSubdirPath).exists()) {
+            qDebug() << "Copying new folder:" << subdir;
+            copy_directory(sourceSubdirPath.toStdString(), destSubdirPath.toStdString());
+        } else {
+            qDebug() << "Synchronizing folder:" << subdir;
+            synchronizeDirectories(sourceSubdirPath, destSubdirPath);
+        }
+    }
+}
+
+
+// Variadic template for handling input function and its arguments
+template <typename Func, typename... Args>
+void handleFunctionWithPopup(Func function, const QString& functionName, Args&&... args) {
+    try {
+        // Call the input function with provided arguments
+        function(std::forward<Args>(args)...);
+    } catch (const std::exception& e) {
+        // Display a popup window with the error message
+        QString errorMessage = QString("An error occurred in %1:\n%2").arg(functionName, e.what());
+        QMessageBox::critical(nullptr, "Error", errorMessage, QMessageBox::Ok);
     }
 }
