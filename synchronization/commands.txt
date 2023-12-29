@@ -1,4 +1,0 @@
-g++ -c file_operations.cpp -o file_operations.o
-g++ -c synchronization.cpp -o synchronization.o
-g++ file_operations.o synchronization.o  -o mySyncTool 
-./mySyncTool

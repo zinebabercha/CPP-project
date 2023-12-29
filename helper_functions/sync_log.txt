@@ -1,2 +1,0 @@
-2023-12-22 21:36:49 - File synchronization started.
-2023-12-22 21:36:49 - File synchronization completed.
